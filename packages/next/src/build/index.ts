@@ -97,8 +97,8 @@ import {
 import type { EventBuildFeatureUsage } from '../telemetry/events'
 import { Telemetry } from '../telemetry/storage'
 import {
-  isDynamicMetadataRoute,
   getPageStaticInfo,
+  isDynamicMetadataRoute as isDynamicMetadataRouteOld,
 } from './analysis/get-page-static-info'
 import { createPagesMapping, getPageFilePath, sortByPageExts } from './entries'
 import { generateBuildId } from './generate-build-id'
@@ -392,6 +392,8 @@ export default async function build(
           })
         )
 
+      const binding = await loadBindings(config?.experimental?.useWasmBinary)
+
       process.env.NEXT_DEPLOYMENT_ID = config.experimental.deploymentId || ''
       NextBuildContext.config = config
 
@@ -645,7 +647,21 @@ export default async function build(
               rootDir,
             })
 
-            const isDynamic = await isDynamicMetadataRoute(pageFilePath)
+            const isDynamic = await binding.analysis.isDynamicMetadataRoute(
+              pageFilePath
+            )
+
+            const isDynamicOld = await isDynamicMetadataRouteOld(pageFilePath)
+            if (isDynamic !== isDynamicOld) {
+              require('console').error(
+                'should match',
+                pageFilePath,
+                isDynamic,
+                isDynamicOld
+              )
+              throw new Error(`should match ${pageFilePath} new: ${isDynamic} old: ${isDynamicOld}`)
+            }
+
             if (!isDynamic) {
               delete mappedAppPages[pageKey]
               mappedAppPages[pageKey.replace('[[...__metadata_id__]]/', '')] =
@@ -1049,7 +1065,6 @@ export default async function build(
         const turboJson = findUp.sync('turbo.json', { cwd: dir })
         // eslint-disable-next-line no-shadow
         const packagePath = findUp.sync('package.json', { cwd: dir })
-        let binding = await loadBindings(config?.experimental?.useWasmBinary)
 
         let root =
           turboNextBuildRoot ??
